@@ -85,6 +85,7 @@ void Visualize(){
     case 3: return swim(); //sophie
     case 4: return punch(); //clarissa
     case 5: return worm(); //clarissa
+    case 6: return location(); // clarissa
     default: return worm();
    }
 }
@@ -187,6 +188,25 @@ void worm(){
   }
   strand.show();
 }*/
+
+void location() {
+  int range = 5;
+  int pos = volume*7/maxVol;
+  int start = (pos*range)-4;
+  fade(0.9);
+  fade(1);
+  if(volume) {
+    for(int i=0; i<LED_HALF; i++ ) { //SETS COLOR ON LOCATION (red center, orange further out, etc)
+      uint32_t color = ColorPalette((pos-1)*255);
+      for( int c=start;c<start+range;c++ ) {
+        strand.setPixelColor(LED_HALF+c, color);
+        strand.setPixelColor(LED_HALF-c, color);
+      }
+      strand.show();
+      fade(0.85);
+    }
+  }
+}
 
 int red=0;
 
