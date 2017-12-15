@@ -1,0 +1,452 @@
+#include <Adafruit_NeoPixel.h>  //Library for LED interactions
+#ifdef __AVR__
+#include <avr/power.h>   //Includes the library for power reduction registers if your chip supports them. 
+#endif                  
+
+// Defining pins and constants
+#define LED_PIN   A5  //Pin for the pixel strand. Can be analog or digital.
+#define LED_TOTAL 60  //Change this to the number of LEDs in your strand.
+#define LED_HALF  LED_TOTAL/2
+#define VISUALS   5   //Change this accordingly if you add/remove a visual in the switch-case in Visualize()
+
+#define AUDIO_PIN A0  //Pin for the envelope of the sound detector
+#define KNOB_PIN  A1  //Pin for the trimpot 10K
+#define BUTTON_1  6   //Button 1 cycles color palettes
+#define BUTTON_2  5   //Button 2 cycles visualization modes
+#define BUTTON_3  4   //Button 3 toggles shuffle mode (automated changing of color and visual)
+
+Adafruit_NeoPixel strand = Adafruit_NeoPixel(LED_TOTAL, LED_PIN, NEO_GRB + NEO_KHZ800); 
+
+uint16_t thresholds[] = {1529, 1019, 764, 764, 764, 1274}; // biggest value the rainbow gradient takes before looping
+uint16_t gradient=0; 
+
+uint8_t palette = 0; // color palette
+uint8_t visual = 0; // current visual
+uint8_t volume = 0; // volume level from detector
+uint8_t last = 0; // volume from previous loop
+
+float maxVol = 15; // largest volume so far
+float knob = 1023.0; // % of trimpot twist
+float avgBump = 0; // average volume change
+float avgVol = 0; // average volume level 
+float shuffleTime = 0; // how many seconds ago last shuffle was
+
+bool bump = false; // "bump" in volume detected (increase)
+
+int8_t dotPos = 0; // holds dot pos
+bool left = false; // holds direction
+float timeBump = 0;
+float avgTime = 0;
+
+int pos = LED_HALF;
+int prevPos;
+uint32_t col;
+
+void setup() {
+  Serial.begin(9600);
+  // insert buttons here if they become relevant 
+  pinMode(BUTTON_1, INPUT); 
+  digitalWrite(BUTTON_1, HIGH); 
+  strand.begin();
+  strand.show();
+  // sounds are input, lights are output
+}
+
+void loop() {
+  // put your main code here, to run repeatedly:
+  volume = analogRead(AUDIO_PIN); // volume level from sound detector
+  knob = analogRead(KNOB_PIN) / 1023.0; // trimpot twist level
+  if (volume < avgVol / 2.0 || volume < 15) volume = 0; // account for noise
+  else avgVol = (avgVol + volume) / 2.0; // average volumes 
+  if (volume > maxVol) maxVol = volume;
+  // insert things about the palettes, buttons, and shuffle if desired
+  CycleVisual();
+  if (gradient > thresholds[palette]){
+    gradient %= thresholds[palette] + 1;
+    maxVol = (maxVol + volume) / 2.0;
+  }
+  if (volume - last > 10) avgBump = (avgBump + (volume - last)) / 2.0;
+  bump = (volume - last > avgBump * .9);
+  if (bump) {
+    avgTime = (((millis() / 1000.0) - timeBump) + avgTime) / 2.0;
+    timeBump = millis() / 1000.0;
+  }
+  Visualize(); // calls visualization based on gradients
+  gradient++; // increments the gradient
+  last = volume; // current volume recorded for bump detection
+  delay(30); // puts delay on visuals so you can actually see them
+}
+
+void Visualize(){
+   switch (visual) {
+    case 0: return volLevel(); // leah
+    case 1: return fred(); // rachel
+    case 2: return help(); // sophie
+    case 3: return swim(); //sophie
+    case 4: return punch(); //clarissa
+    case 5: return worm(); //clarissa
+    default: return worm();
+   }
+}
+
+uint32_t ColorPalette(float num){
+  switch (palette){ // this is passing in 0 right now b/c palatte hasn't been incremented
+    case 0: return (num<0) ? Rainbow(gradient) : Rainbow(num); //check gradient 
+  }
+}
+
+void CycleVisual() {
+  if (!digitalRead(BUTTON_1)) {
+    visual++;
+    gradient = 0; //Prevent overflow
+    if (visual > VISUALS) visual = 0;
+    delay(350);
+    maxVol = avgVol; 
+  }
+}
+
+
+/*void pread(){
+  if (volume>0){
+      uint8_t left = LED_HALF;
+      uint8_t right = LED_HALF+1;
+      strand.setPixelColor(left, strand.Color(255, 0, 0));
+      strand.setPixelColor(right, strand.Color(255, 0, 0));
+      uint8_t r = (255-(random(0, 255)));
+      uint8_t g = (r*10-10)%255;
+      uint8_t b = (g+60)%255;
+      for (int i=0; i<LED_HALF; i++){ //iterates 30 times
+        fade(0.8);// if you set fade to above 0 it does other stuff
+        strand.setPixelColor(left-i, strand.Color(r-1.5, g-1.5, b-1.5));
+        for (int j=left-i+1; j<LED_HALF; j++){
+          strand.setPixelColor(j, (r+400)%255, (b+400)%255, (g+400)%255);
+        }
+        //fade(0.8);
+        for (int k=right+i-1; k<LED_TOTAL; k++){
+          strand.setPixelColor(k, (r+400)%255, (b+400)%255, (g+400)%255);
+        }
+        strand.setPixelColor(right+i, strand.Color(r-=1.5, g-=1.5, b-=1.5));
+        
+        strand.show();
+        fade(1);
+      }
+    }
+}*/
+
+//FINISHED(?) - WORKING
+//WARMER VALUES ON LOWER VOLUMES, COOLER VALUES ON HIGHER VOLUMES
+void worm(){
+  for(int i=0;i<LED_HALF;i++){
+    strand.setPixelColor(i, strand.getPixelColor(i+1));
+  }
+  for(int j = LED_TOTAL-1; j>LED_HALF+1; j--){
+    strand.setPixelColor(j, strand.getPixelColor(j-1));
+  }
+  if(volume){
+    
+    uint32_t color = Rainbow(pow(volume,1.75));
+    strand.setPixelColor(LED_HALF, color);
+    strand.setPixelColor(LED_HALF+1, color);
+  }
+
+  else{ //FADES
+    uint32_t col = strand.getPixelColor(LED_HALF-1);
+    float colors[3];
+    for (int j=0; j<3; j++) {
+      colors[j] = split(col, j)*.85;
+    }
+    strand.setPixelColor(LED_HALF, strand.Color(colors[0], colors[1], colors [2]));
+    strand.setPixelColor(LED_HALF+1, strand.Color(colors[0], colors[1], colors [2]));
+  }
+  strand.show();
+}
+
+/*void spread2(){
+  for(int i=0;i<LED_HALF;i++){
+    strand.setPixelColor(i, strand.getPixelColor(i+1));
+  }
+  for(int j = LED_TOTAL-1; j>LED_HALF+1; j--){
+    strand.setPixelColor(j, strand.getPixelColor(j-1));
+  }
+  if(volume){
+    int colvol = maxVol/7;
+    colvol = volume/colvol;
+    uint32_t color = Rainbow(255*colvol);
+    strand.setPixelColor(LED_HALF, color);
+    strand.setPixelColor(LED_HALF+1, color);
+  }
+
+  else{ //FADES
+    uint32_t col = strand.getPixelColor(LED_HALF-1);
+    float colors[3];
+    for (int j=0; j<3; j++) {
+      colors[j] = split(col, j)*.85;
+    }
+    strand.setPixelColor(LED_HALF, strand.Color(colors[0], colors[1], colors [2]));
+    strand.setPixelColor(LED_HALF+1, strand.Color(colors[0], colors[1], colors [2]));
+  }
+  strand.show();
+}*/
+
+int red=0;
+
+void fred(){
+ fade(0.8);
+  if (volume>0){
+      uint8_t left = LED_HALF;
+      uint8_t right = LED_HALF+1;
+      strand.setPixelColor(left, strand.Color(255, 0, 0));
+      strand.setPixelColor(right, strand.Color(255, 0, 0));
+      uint8_t r = (255-red);
+      if (red==250) red=0;
+      red+=20;
+      uint8_t g = (r*10-10)%255;
+      uint8_t b = (g+60)%255;
+      for (int i=0; i<LED_HALF; i++){
+        fade(0.8);
+        fade(1); // if you set fade to above 0 it does other stuff
+        strand.setPixelColor(left-i, strand.Color(r-=3, g-=3, b-=3));
+        strand.setPixelColor(right+i, strand.Color(r-=3, g-=3, b-=3));
+        for (int k=i; k<LED_HALF-i; k++){
+          //int currRight=left+(2*(LED_HALF-left));
+          int currRight=LED_HALF+i;
+          int currLeft=LED_HALF-i;
+          //int leftAdjust=k+1;
+          //int rightAdjust=currRight-1;
+          strand.setPixelColor(currRight-k, (r+300)%255, (b+300)%255, (g+300)%255);
+          strand.setPixelColor(currLeft+k, (r+300)%255, (b+300)%255, (g+300)%255);
+        }
+        //fade(0.8);
+        strand.show();
+        fade(1);
+      }
+    }
+    
+}
+
+
+
+//IDK MAN this is the same code as spread but w an extra thing in there that didn't do what i wanted it to do but it's kinda cool i guess
+void punch(){
+  for(int i=0;i<LED_HALF;i++){
+    strand.setPixelColor(i, strand.getPixelColor(i+1));
+  }
+  for(int j = LED_TOTAL-1; j>LED_HALF+1; j--){
+    strand.setPixelColor(j, strand.getPixelColor(j-1));
+  }
+  if(volume){
+    int colvol = maxVol/7;
+    colvol = volume/colvol;
+    uint32_t color = Rainbow(255*colvol);
+    if( volume-last >3 ) {
+      strand.setBrightness(strand.getBrightness()+4);
+      for(int i=0; i<LED_TOTAL; i++){
+        strand.setPixelColor(i, color);
+      }
+      strand.setBrightness(strand.getBrightness()-4);
+    }
+    strand.setPixelColor(LED_HALF, color);
+    strand.setPixelColor(LED_HALF+1, color);
+  }
+  else{ //FADES
+    uint32_t col = strand.getPixelColor(LED_HALF-1);
+    float colors[3];
+    for (int j=0; j<3; j++) {
+      colors[j] = split(col, j)*.85;
+    }
+    strand.setPixelColor(LED_HALF, strand.Color(colors[0], colors[1], colors [2]));
+    strand.setPixelColor(LED_HALF+1, strand.Color(colors[0], colors[1], colors [2]));
+  }
+  strand.show();
+}
+
+void volLevel(){
+  if(volume){
+  int range = (volume/maxVol)*LED_TOTAL;
+  //int divide = range/7;
+  int divide = LED_TOTAL/7;
+  for(int i=0;i<range;i++){
+    uint32_t color = ColorPalette(255 *(i/divide));
+    strand.setPixelColor(i, color);
+  }
+  for(int i=range;i<LED_TOTAL;i++){
+    strand.setPixelColor(i, strand.Color(0,0,0)); 
+  }
+  }
+  strand.show();
+}
+
+//NOT COMPLETE YET
+void help(){
+  fade(0.8);
+  int avgDist = LED_TOTAL / 6;// might want to change this later if avgbump changes? idk
+  if(volume>0){
+    int dist = avgDist*(volume/maxVol);
+    //if vol<avgvol, go backwards, else go forwards
+    //low volumes on cool end of rainbow, high on warm end? idk?
+    if(volume<last){
+      prevPos = pos;
+      pos -= dist;
+      if(pos<0){
+        pos = LED_TOTAL+pos;
+      }
+      uint32_t color = Rainbow(255*7*pos/LED_TOTAL);
+      strand.setPixelColor(pos, color);
+      fadeTo(pos, prevPos, 1);
+    }
+    else if (volume>last){
+      prevPos = pos;
+      pos += dist;
+      pos = pos%LED_TOTAL;
+      uint32_t color = Rainbow(LED_TOTAL/(pos+1));
+      strand.setPixelColor(pos, color);
+      fadeTo(prevPos, pos, 1);
+    }
+  }
+  strand.show();
+}
+
+//WORKING
+void swim(){
+  fade(0.95);
+  float brightness = pow(volume/maxVol,1.75) * knob/2;
+  if(bump){//do some fun visual thing, then restore board, switch directions and
+  //get a new color
+    uint32_t colors[LED_TOTAL];
+    for(int i=0;i<LED_TOTAL;i++){
+      colors[i] = strand.getPixelColor(i);
+    }
+    strand.setPixelColor(pos,strand.Color(255*brightness,255*brightness,255*brightness));
+    for(int i=1;i<volume*LED_TOTAL/(10*maxVol); i++){
+      strand.setPixelColor(pos +i, strand.Color(split(col,0)*brightness,split(col,1)*brightness,split(col,2)*brightness));
+      strand.setPixelColor(pos -i, strand.Color(split(col,0)*brightness,split(col,1)*brightness,split(col,2)*brightness));
+      fadeTo(pos, pos+i,2);
+      fadeTo(pos-i, pos, 1/2);
+      //strand.setPixelColor(random(pos-i,pos+i), strand.Color(255*brightness,255*brightness,255*brightness));
+      strand.show();
+    }
+    for(int i=volume*LED_TOTAL/(10*maxVol);i>0; i--){
+      strand.setPixelColor(pos +i, strand.Color(split(col,0)*brightness,split(col,1)*brightness,split(col,2)*brightness));
+      strand.setPixelColor(pos -i, strand.Color(split(col,0)*brightness,split(col,1)*brightness,split(col,2)*brightness));
+      fadeTo(pos, pos+i,2);
+      fadeTo(pos-i, pos, 1/2);
+      //strand.setPixelColor(random(pos-i,pos+i), strand.Color(255*brightness,255*brightness,255*brightness));
+      strand.show();
+      strand.setPixelColor(pos+i, strand.Color(0,0,0));
+      strand.setPixelColor(pos-i, strand.Color(0,0,0));
+    }
+    for(int i=0;i<LED_TOTAL;i++){//restore board
+      strand.setPixelColor(i,colors[i]);
+    }
+    left = !left;
+    col = strand.Color(random(0,256),random(0,256),random(0,256));
+    //col = ColorPalette(random(0,thresholds[palette]));
+    prevPos = pos;
+    if(left&&pos<LED_TOTAL-1){
+      strand.setPixelColor(pos+1, strand.Color(0,0,0));
+    }
+    if(!left&&pos>0){
+      strand.setPixelColor(pos-1, strand.Color(0,0,0));
+    }
+  }
+  if(volume){
+  if(pos==-1){//swim hasn't been called before
+    pos = LED_HALF;
+    //col = ColorPalette(random(0,thresholds[palette]));
+    col = strand.Color(random(0,256),random(0,256),random(0,256));
+    prevPos = pos;
+    strand.setPixelColor(pos, strand.Color(split(col,0)*brightness,split(col,1)*brightness,split(col,2)*brightness));
+  }
+  if(!left){//swimming right
+    if(pos<LED_TOTAL-1){//if not at end of strip
+      pos +=1;
+      if(pos<LED_TOTAL-1){
+       // strand.setPixelColor(pos+1, strand.Color(0,0,0));
+      }
+    }
+    else{
+      left = !left;
+    }
+    strand.setPixelColor(pos, strand.Color(split(col,0)*brightness,split(col,1)*brightness,split(col,2)*brightness));
+    fadeTo(prevPos, pos, 1);
+    fadeTo(0,prevPos,1);
+  }
+  else{//swimming left
+    if(pos>0){
+      pos-=1;
+      if(pos>0){
+     //   strand.setPixelColor(pos-1, strand.Color(0,0,0));
+      }
+    }
+    else{
+      left = !left;
+    }
+    strand.setPixelColor(pos, strand.Color(split(col,0)*brightness,split(col,1)*brightness,split(col,2)*brightness));
+    fadeTo(pos, prevPos, 1);
+    fadeTo(prevPos, LED_TOTAL-1,1);
+  }
+  }
+  strand.show();
+}
+
+
+//not totally sure this works
+void fadeTo(int startIndex, int endIndex, float fadeFactor){//fades pixels between start and end from one color to the other
+  //fadeFactor >= 0
+  //if fadeFactor ==1 there will be an even fade, if ff<1 it will be a faster fade
+  //from start to end, else it will be a slower fade from start to end
+  /*if(startIndex>endIndex){
+    int temp = startIndex;
+    startIndex = endIndex;
+    endIndex = temp;
+  }*/
+  uint32_t startCol = strand.getPixelColor(startIndex);
+  uint32_t endCol = strand.getPixelColor(endIndex);
+  float startColors[3];
+  float endColors[3];
+  float diffColors[3];//stores difference in color values
+  for (int j=0; j<3; j++){
+    startColors[j] = split(startCol, j);
+    endColors[j] = split(endCol, j);
+    diffColors[j] = endColors[j]-startColors[j];
+  }
+  int iDiff;
+  if(startIndex<=endIndex){
+    iDiff= endIndex-startIndex;
+  }
+  else{
+    iDiff = LED_TOTAL - startIndex+endIndex;
+  }
+  for(int i=startIndex+1;i<endIndex%LED_TOTAL;i++){
+    float factor = pow(((i-startIndex)%LED_TOTAL)/iDiff, fadeFactor);
+    strand.setPixelColor(i%LED_TOTAL, strand.Color(startColors[0]+diffColors[0]*factor,startColors[1]+diffColors[1]*factor,startColors[2]+diffColors[2]*factor));
+  }
+}
+
+void fade(float damper){
+  for (int i=0; i<strand.numPixels(); i++){
+    uint32_t col = strand.getPixelColor(i);
+    if (col==0) continue;
+    float colors[3]; 
+    for (int j=0; j<3; j++) colors[j] = split(col, j)*damper;
+    strand.setPixelColor(i, strand.Color(colors[0], colors[1], colors [2]));
+  }
+}
+
+int8_t split(uint32_t color, uint8_t i){
+  if (i==0) return color >> 16;
+  if (i==1) return color >> 8;
+  if (i==2) return color >>0;
+  return -1;
+}
+
+
+uint32_t Rainbow(unsigned int i){
+  if (i > 1529) return Rainbow(i%1530); 
+  if (i > 1274) return strand.Color(255, 0, 255- (i % 255)); // violet->red
+  if (i > 1019) return strand.Color((i % 255), 0, 255); // blue->violet
+  if (i > 764) return strand.Color(0, 255 - (i % 255), 255); // aqua->blue
+  if (i > 509) return strand.Color(0, 255, (i % 255)); // green->aqua
+  if (i > 255) return strand.Color(255 - (i%255), 255, 0); // yellow->green
+  return strand.Color(255, i, 0); // red->yellow
+}
