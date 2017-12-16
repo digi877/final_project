@@ -1,0 +1,5 @@
+As an aside/note: We referenced the code of the Sparkfun music visualizer when adjusting for volume and color gradients, 
+and borrowed elements from it. After multiple attempts to understand the basics of how to work with volume/brightness/color, we 
+decided collectively that it would be most efficient to use their existing code as a springboard. This ended up being a very effective
+way of getting acquainted early-on with how to program the LEDs; though elements of their code still remain within the program, 
+all of the main methods were written by us, and most of them don't actually make use of the color gradients provided. 
