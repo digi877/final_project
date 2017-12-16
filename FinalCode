@@ -86,7 +86,7 @@ void Visualize(){
     case 4: return punch(); //clarissa
     case 5: return worm(); //clarissa
     case 6: return location(); // clarissa
-    default: return worm();
+    default: return volLevel();
    }
 }
 
